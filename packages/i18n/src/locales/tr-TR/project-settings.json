@@ -417,6 +417,9 @@
         "toggle_title": "Zaman takibini etkinleştir",
         "toggle_description": "Proje üyeleri çalışılan zamanı kaydedebilecektir."
       },
+      "time_report": {
+        "short_title": "Zaman raporu"
+      },
       "milestones": {
         "title": "Kilometre taşları",
         "short_title": "Kilometre taşları",

@@ -417,6 +417,9 @@
         "toggle_title": "啟用時間追蹤",
         "toggle_description": "專案成員將能夠記錄工作時間。"
       },
+      "time_report": {
+        "short_title": "時間報告"
+      },
       "milestones": {
         "title": "里程碑",
         "short_title": "里程碑",

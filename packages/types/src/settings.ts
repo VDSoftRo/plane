@@ -28,6 +28,7 @@ export type TProjectSettingsTabs =
   | "features_pages"
   | "features_intake"
   | "features_time_tracking"
+  | "features_time_report"
   | "states"
   | "labels"
   | "estimates"

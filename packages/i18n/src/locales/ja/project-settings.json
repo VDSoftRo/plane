@@ -417,6 +417,9 @@
         "toggle_title": "時間追跡を有効にする",
         "toggle_description": "プロジェクトメンバーは作業時間を記録できるようになります。"
       },
+      "time_report": {
+        "short_title": "時間レポート"
+      },
       "milestones": {
         "title": "マイルストーン",
         "short_title": "マイルストーン",

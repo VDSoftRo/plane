@@ -417,6 +417,9 @@
         "toggle_title": "Enable time tracking",
         "toggle_description": "Project members will be able to log time worked."
       },
+      "time_report": {
+        "short_title": "Time report"
+      },
       "milestones": {
         "title": "Milestones",
         "short_title": "Milestones",

@@ -46,6 +46,14 @@ def _total_url(slug: str, project_id: uuid.UUID, issue_id: uuid.UUID) -> str:
     return f"/api/workspaces/{slug}/projects/{project_id}/issues/{issue_id}/total-worklogs/"
 
 
+def _report_url(slug: str, project_id: uuid.UUID) -> str:
+    return f"/api/workspaces/{slug}/projects/{project_id}/worklog-report/"
+
+
+def _report_csv_url(slug: str, project_id: uuid.UUID) -> str:
+    return f"{_report_url(slug, project_id)}csv/"
+
+
 def _make_user(email: str) -> User:
     local_part = email.split("@")[0]
     user = User.objects.create(email=email, username=local_part, first_name=local_part)
@@ -302,3 +310,122 @@ class TestIssueWorklogTotals:
         response = _client_for(create_user).get(_total_url(workspace.slug, project.id, issue.id))
 
         assert response.data["total_duration"] == keep.duration
+
+
+@pytest.mark.contract
+class TestProjectWorklogReport:
+    """The project report totals each work item over an inclusive date range."""
+
+    def test_report_is_admin_only(self, workspace, project, issue):
+        member = _make_user("report-member@plane.so")
+        _add_member(workspace, project, member, project_role=MEMBER_ROLE)
+
+        response = _client_for(member).get(
+            _report_url(workspace.slug, project.id),
+            {"start_date": str(date.today()), "end_date": str(date.today())},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_report_totals_each_work_item(self, workspace, project, issue, create_user):
+        other_issue = Issue.objects.create(
+            name="Second work item", workspace=workspace, project=project, created_by=create_user
+        )
+        teammate = _make_user("report-teammate@plane.so")
+        _add_member(workspace, project, teammate, project_role=MEMBER_ROLE)
+        # Two people on one item: the row must aggregate across users.
+        _log_time(project, issue, create_user, duration=150)
+        _log_time(project, issue, teammate, duration=90)
+        _log_time(project, other_issue, create_user, duration=360)
+
+        response = _client_for(create_user).get(
+            _report_url(workspace.slug, project.id),
+            {"start_date": str(date.today()), "end_date": str(date.today())},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["total_duration"] == 600
+        rows = response.data["work_items"]
+        assert [row["total_duration"] for row in rows] == [360, 240], "rows must be ordered by time desc"
+
+    def test_report_excludes_entries_outside_the_range(self, workspace, project, issue, create_user):
+        _log_time(project, issue, create_user, duration=60, logged_on=date.today())
+        _log_time(project, issue, create_user, duration=999, logged_on=date.today() - timedelta(days=40))
+
+        response = _client_for(create_user).get(
+            _report_url(workspace.slug, project.id),
+            {
+                "start_date": str(date.today() - timedelta(days=30)),
+                "end_date": str(date.today()),
+            },
+        )
+
+        assert response.data["total_duration"] == 60
+
+    def test_report_range_bounds_are_inclusive(self, workspace, project, issue, create_user):
+        edge = date.today() - timedelta(days=3)
+        _log_time(project, issue, create_user, duration=45, logged_on=edge)
+
+        response = _client_for(create_user).get(
+            _report_url(workspace.slug, project.id),
+            {"start_date": str(edge), "end_date": str(edge)},
+        )
+
+        assert response.data["total_duration"] == 45
+
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {},
+            {"start_date": "2026-01-01"},
+            {"end_date": "2026-01-01"},
+            {"start_date": "not-a-date", "end_date": "2026-01-01"},
+            {"start_date": "2026-02-01", "end_date": "2026-01-01"},
+        ],
+    )
+    def test_report_rejects_bad_ranges(self, workspace, project, create_user, params):
+        response = _client_for(create_user).get(_report_url(workspace.slug, project.id), params)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_report_is_empty_when_nothing_is_logged(self, workspace, project, create_user):
+        response = _client_for(create_user).get(
+            _report_url(workspace.slug, project.id),
+            {"start_date": str(date.today()), "end_date": str(date.today())},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["total_duration"] == 0
+        assert response.data["work_items"] == []
+
+
+@pytest.mark.contract
+class TestProjectWorklogReportCSV:
+    """The CSV export mirrors the JSON report."""
+
+    def test_csv_is_admin_only(self, workspace, project):
+        member = _make_user("csv-member@plane.so")
+        _add_member(workspace, project, member, project_role=MEMBER_ROLE)
+
+        response = _client_for(member).get(
+            _report_csv_url(workspace.slug, project.id),
+            {"start_date": str(date.today()), "end_date": str(date.today())},
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_csv_contains_a_row_per_work_item(self, workspace, project, issue, create_user):
+        _log_time(project, issue, create_user, duration=150)
+
+        response = _client_for(create_user).get(
+            _report_csv_url(workspace.slug, project.id),
+            {"start_date": str(date.today()), "end_date": str(date.today())},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response["Content-Type"] == "text/csv"
+        assert "attachment;" in response["Content-Disposition"]
+        body = response.content.decode()
+        assert f"{project.identifier}-{issue.sequence_id}" in body
+        assert "150" in body
+        assert "2h 30m" in body

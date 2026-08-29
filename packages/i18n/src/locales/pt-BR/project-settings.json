@@ -417,6 +417,9 @@
         "toggle_title": "Ativar rastreamento de tempo",
         "toggle_description": "Os membros do projeto poderão registrar o tempo trabalhado."
       },
+      "time_report": {
+        "short_title": "Relatório de tempo"
+      },
       "milestones": {
         "title": "Marcos",
         "short_title": "Marcos",

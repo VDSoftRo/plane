@@ -4,7 +4,12 @@
 
 from django.urls import path
 
-from plane.app.views import IssueWorklogViewSet, IssueTotalWorklogEndpoint
+from plane.app.views import (
+    IssueWorklogViewSet,
+    IssueTotalWorklogEndpoint,
+    ProjectWorklogReportEndpoint,
+    ProjectWorklogReportCSVEndpoint,
+)
 
 
 urlpatterns = [
@@ -22,5 +27,15 @@ urlpatterns = [
         "workspaces/<str:slug>/projects/<uuid:project_id>/issues/<uuid:issue_id>/total-worklogs/",
         IssueTotalWorklogEndpoint.as_view(),
         name="issue-total-worklog",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/worklog-report/",
+        ProjectWorklogReportEndpoint.as_view(),
+        name="project-worklog-report",
+    ),
+    path(
+        "workspaces/<str:slug>/projects/<uuid:project_id>/worklog-report/csv/",
+        ProjectWorklogReportCSVEndpoint.as_view(),
+        name="project-worklog-report-csv",
     ),
 ]

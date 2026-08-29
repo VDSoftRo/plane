@@ -417,6 +417,9 @@
         "toggle_title": "Abilita monitoraggio del tempo",
         "toggle_description": "I membri del progetto potranno registrare il tempo lavorato."
       },
+      "time_report": {
+        "short_title": "Rapporto sul tempo"
+      },
       "milestones": {
         "title": "Traguardi",
         "short_title": "Traguardi",

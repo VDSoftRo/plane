@@ -2,8 +2,14 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 # See the LICENSE file for details.
 
+# Python imports
+import csv
+import io
+from datetime import date
+
 # Django imports
 from django.db.models import Sum
+from django.http import HttpResponse
 
 # Third Party imports
 from rest_framework import status
@@ -14,6 +20,7 @@ from .. import BaseViewSet, BaseAPIView
 from plane.app.permissions import allow_permission, ROLE
 from plane.app.serializers import IssueWorklogSerializer
 from plane.db.models import Issue, IssueWorklog, Project, ProjectMember
+from plane.utils.csv_utils import sanitize_csv_row
 
 
 def _is_project_admin(user, slug, project_id):
@@ -123,3 +130,119 @@ class IssueTotalWorklogEndpoint(BaseAPIView):
             or 0
         )
         return Response({"total_duration": total}, status=status.HTTP_200_OK)
+
+
+def _parse_report_range(request):
+    """Read start_date/end_date query params. Returns (start, end, error_response)."""
+    parsed = {}
+    for key in ("start_date", "end_date"):
+        raw = request.GET.get(key)
+        if not raw:
+            return None, None, Response(
+                {"error": f"{key} is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            parsed[key] = date.fromisoformat(raw)
+        except ValueError:
+            return None, None, Response(
+                {"error": f"{key} must be a valid YYYY-MM-DD date."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if parsed["start_date"] > parsed["end_date"]:
+        return None, None, Response(
+            {"error": "start_date cannot be after end_date."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return parsed["start_date"], parsed["end_date"], None
+
+
+def _report_rows(slug, project_id, start_date, end_date):
+    """Per-work-item totals for the range, largest first. Both bounds inclusive."""
+    aggregates = (
+        IssueWorklog.objects.filter(
+            workspace__slug=slug,
+            project_id=project_id,
+            logged_on__gte=start_date,
+            logged_on__lte=end_date,
+        )
+        .values("issue_id")
+        .annotate(total_duration=Sum("duration"))
+        .order_by("-total_duration")
+    )
+    aggregates = list(aggregates)
+
+    issues = Issue.objects.filter(pk__in=[row["issue_id"] for row in aggregates]).select_related("project")
+    issue_map = {issue.id: issue for issue in issues}
+
+    rows = []
+    for row in aggregates:
+        issue = issue_map.get(row["issue_id"])
+        if issue is None:
+            continue
+        rows.append(
+            {
+                "issue_id": str(issue.id),
+                "sequence_id": issue.sequence_id,
+                "project_identifier": issue.project.identifier,
+                "name": issue.name,
+                "total_duration": row["total_duration"],
+            }
+        )
+    return rows
+
+
+class ProjectWorklogReportEndpoint(BaseAPIView):
+    """Per-work-item logged time for a date range. Project admins only."""
+
+    @allow_permission([ROLE.ADMIN])
+    def get(self, request, slug, project_id):
+        start_date, end_date, error = _parse_report_range(request)
+        if error:
+            return error
+
+        rows = _report_rows(slug, project_id, start_date, end_date)
+        return Response(
+            {
+                "start_date": str(start_date),
+                "end_date": str(end_date),
+                "total_duration": sum(row["total_duration"] for row in rows),
+                "work_items": rows,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ProjectWorklogReportCSVEndpoint(BaseAPIView):
+    """The same report as a CSV download. Project admins only."""
+
+    @allow_permission([ROLE.ADMIN])
+    def get(self, request, slug, project_id):
+        start_date, end_date, error = _parse_report_range(request)
+        if error:
+            return error
+
+        rows = _report_rows(slug, project_id, start_date, end_date)
+        table = [["Work item", "Title", "Duration (minutes)", "Duration"]]
+        for row in rows:
+            hours, minutes = divmod(row["total_duration"], 60)
+            table.append(
+                [
+                    f"{row['project_identifier']}-{row['sequence_id']}",
+                    row["name"],
+                    row["total_duration"],
+                    f"{hours}h {minutes}m",
+                ]
+            )
+
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=",", quoting=csv.QUOTE_ALL)
+        for row in table:
+            writer.writerow(sanitize_csv_row(row))
+        buffer.seek(0)
+
+        response = HttpResponse(buffer.getvalue(), content_type="text/csv")
+        response["Content-Disposition"] = (
+            f'attachment; filename="time-report-{start_date}-to-{end_date}.csv"'
+        )
+        return response

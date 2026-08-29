@@ -417,6 +417,9 @@
         "toggle_title": "Aktifkan pelacakan waktu",
         "toggle_description": "Anggota proyek akan dapat mencatat waktu yang dikerjakan."
       },
+      "time_report": {
+        "short_title": "Laporan waktu"
+      },
       "milestones": {
         "title": "Tonggak",
         "short_title": "Tonggak",

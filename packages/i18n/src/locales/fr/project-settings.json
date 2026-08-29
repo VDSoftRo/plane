@@ -417,6 +417,9 @@
         "toggle_title": "Activer le suivi du temps",
         "toggle_description": "Les membres du projet pourront enregistrer le temps travaillé."
       },
+      "time_report": {
+        "short_title": "Rapport de temps"
+      },
       "milestones": {
         "title": "Jalons",
         "short_title": "Jalons",

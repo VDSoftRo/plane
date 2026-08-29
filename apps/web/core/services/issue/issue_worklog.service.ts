@@ -31,6 +31,21 @@ export type TIssueWorklog = {
   updated_at: string;
 };
 
+export type TWorklogReportRow = {
+  issue_id: string;
+  sequence_id: number;
+  project_identifier: string;
+  name: string;
+  total_duration: number;
+};
+
+export type TWorklogReport = {
+  start_date: string;
+  end_date: string;
+  total_duration: number;
+  work_items: TWorklogReportRow[];
+};
+
 export class IssueWorklogService extends APIService {
   constructor() {
     super(API_BASE_URL);
@@ -54,6 +69,27 @@ export class IssueWorklogService extends APIService {
       .catch((error) => {
         throw error?.response?.data;
       });
+  }
+
+  async getProjectReport(
+    workspaceSlug: string,
+    projectId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<TWorklogReport> {
+    return this.get(`/api/workspaces/${workspaceSlug}/projects/${projectId}/worklog-report/`, {
+      params: { start_date: startDate, end_date: endDate },
+    })
+      .then((response) => response?.data)
+      .catch((error) => {
+        throw error?.response?.data;
+      });
+  }
+
+  /** URL for the CSV download of the same report. */
+  getProjectReportCSVUrl(workspaceSlug: string, projectId: string, startDate: string, endDate: string): string {
+    const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
+    return `${API_BASE_URL}/api/workspaces/${workspaceSlug}/projects/${projectId}/worklog-report/csv/?${params.toString()}`;
   }
 
   async createWorklog(

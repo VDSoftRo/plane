@@ -417,6 +417,9 @@
         "toggle_title": "Bật theo dõi thời gian",
         "toggle_description": "Thành viên dự án sẽ có thể ghi lại thời gian làm việc."
       },
+      "time_report": {
+        "short_title": "Báo cáo thời gian"
+      },
       "milestones": {
         "title": "Cột mốc",
         "short_title": "Cột mốc",

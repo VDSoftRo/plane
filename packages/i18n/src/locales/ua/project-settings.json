@@ -417,6 +417,9 @@
         "toggle_title": "Увімкнути відстеження часу",
         "toggle_description": "Учасники проекту зможуть записувати відпрацьований час."
       },
+      "time_report": {
+        "short_title": "Звіт про час"
+      },
       "milestones": {
         "title": "Віхи",
         "short_title": "Віхи",

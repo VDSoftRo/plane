@@ -417,6 +417,9 @@
         "toggle_title": "Povoliť sledovanie času",
         "toggle_description": "Členovia projektu budú môcť zaznamenávať odpracovaný čas."
       },
+      "time_report": {
+        "short_title": "Prehľad času"
+      },
       "milestones": {
         "title": "Míľniky",
         "short_title": "Míľniky",

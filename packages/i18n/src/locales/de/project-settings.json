@@ -417,6 +417,9 @@
         "toggle_title": "Zeiterfassung aktivieren",
         "toggle_description": "Projektmitglieder können die geleistete Arbeit protokollieren."
       },
+      "time_report": {
+        "short_title": "Zeitbericht"
+      },
       "milestones": {
         "title": "Meilensteine",
         "short_title": "Meilensteine",

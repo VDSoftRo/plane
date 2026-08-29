@@ -417,6 +417,9 @@
         "toggle_title": "Povolit sledování času",
         "toggle_description": "Členové projektu budou moci zaznamenávat odpracovaný čas."
       },
+      "time_report": {
+        "short_title": "Přehled času"
+      },
       "milestones": {
         "title": "Milníky",
         "short_title": "Milníky",

@@ -417,6 +417,9 @@
         "toggle_title": "Włącz śledzenie czasu",
         "toggle_description": "Członkowie projektu będą mogli rejestrować przepracowany czas."
       },
+      "time_report": {
+        "short_title": "Raport czasu"
+      },
       "milestones": {
         "title": "Kamienie milowe",
         "short_title": "Kamienie milowe",
