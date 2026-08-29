@@ -4,8 +4,8 @@
  * See the LICENSE file for details.
  */
 
-export const SITE_NAME = "Plane | Simple, extensible, open-source project management tool.";
-export const SITE_TITLE = "Plane | Simple, extensible, open-source project management tool.";
+export const SITE_NAME = "Plane | Francu Digital";
+export const SITE_TITLE = "Plane | Francu Digital";
 export const SITE_DESCRIPTION =
   "Open-source project management tool to manage work items, cycles, and product roadmaps easily";
 export const SITE_KEYWORDS =
