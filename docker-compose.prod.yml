@@ -144,6 +144,10 @@ services:
       - plane-db
       - plane-redis
 
+  # The live (collaborative editing) server validates its env with zod at
+  # startup and exits 1 if anything required is missing — API_BASE_URL and
+  # LIVE_SERVER_SECRET_KEY have no defaults, so without this env_file the
+  # container crash-loops. Upstream's compose omits it; it belongs here.
   live:
     build:
       context: .
@@ -151,7 +155,12 @@ services:
       args:
         DOCKER_BUILDKIT: 1
     restart: always
+    env_file:
+      - ./apps/live/.env
     networks: [plane-net]
+    depends_on:
+      - api
+      - plane-redis
 
   plane-db:
     image: postgres:15.7-alpine

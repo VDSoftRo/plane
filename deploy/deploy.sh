@@ -38,9 +38,33 @@ if [[ ! -f "${REPO_ROOT}/.env" ]]; then
 fi
 
 if [[ ! -f "${REPO_ROOT}/apps/api/.env" ]]; then
-  err "apps/api/.env not found — copy apps/api/.env.example to apps/api/.env and fill it in."
+  err "apps/api/.env not found — copy apps/api/.env.prod.example to apps/api/.env and fill it in."
   err "It carries WEB_URL / *_BASE_URL / CORS_ALLOWED_ORIGINS, which MUST match the"
   err "public hostname or login and file uploads break. See deploy/README.md."
+  exit 1
+fi
+
+if [[ ! -f "${REPO_ROOT}/apps/live/.env" ]]; then
+  err "apps/live/.env not found — copy apps/live/.env.prod.example to apps/live/.env."
+  err "The live server validates its env at startup and exits if API_BASE_URL or"
+  err "LIVE_SERVER_SECRET_KEY are missing, so it would just crash-loop."
+  exit 1
+fi
+
+# LIVE_SERVER_SECRET_KEY is a shared secret between the API and the live server.
+# If the two files disagree, both containers start fine and collaborative
+# editing silently fails auth on every connection — worth catching up front.
+# Reads a KEY=value from an env file, stripping surrounding single/double
+# quotes. Returns empty if the key is absent.
+read_env_value() {
+  sed -n "s/^$2=//p" "$1" | head -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
+}
+
+api_live_key="$(read_env_value "${REPO_ROOT}/apps/api/.env" LIVE_SERVER_SECRET_KEY)"
+live_live_key="$(read_env_value "${REPO_ROOT}/apps/live/.env" LIVE_SERVER_SECRET_KEY)"
+if [[ -z "${api_live_key}" || "${api_live_key}" != "${live_live_key}" ]]; then
+  err "LIVE_SERVER_SECRET_KEY does not match between apps/api/.env and apps/live/.env."
+  err "Collaborative editing would fail auth on every connection. Make them identical."
   exit 1
 fi
 
