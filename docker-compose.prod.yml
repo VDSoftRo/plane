@@ -1,0 +1,258 @@
+# Production deployment for Plane (Francu Digital), on the Ubuntu host.
+#
+# Served behind the shared Caddy edge proxy (see ~/devops-francu) at
+#   http://plane.francugroup.ro
+# so this stack publishes NO host ports — the edge Caddy reaches Plane by
+# service name over the external `edge` network.
+#
+# Topology (two proxies, deliberately):
+#
+#   browser (on VPN)
+#     └─▶ edge Caddy :80  ──(edge net)──▶  plane-proxy:80   [this stack]
+#                                            ├── /api/*      -> api:8000
+#                                            ├── /auth/*     -> api:8000
+#                                            ├── /god-mode/* -> admin:3000
+#                                            ├── /spaces/*   -> space:3000
+#                                            ├── /live/*     -> live:3000
+#                                            ├── /uploads/*  -> plane-minio:9000
+#                                            └── /*          -> web:3000
+#
+# The edge proxy has exactly ONE upstream here (plane-proxy). Plane's own
+# internal path routing is untouched — see apps/proxy/Caddyfile.ce.
+#
+# This file is SEPARATE from the upstream docker-compose.yml on purpose: the
+# production-francu branch tracks makeplane/plane, and keeping the upstream
+# compose pristine means future release merges don't conflict here.
+#
+# Differences from upstream docker-compose.yml:
+#   - no `container_name:` anywhere (upstream hardcodes global names like `api`,
+#     `web`, `proxy` — those are host-global and collide with other stacks).
+#     Compose auto-names them plane-<service>-1; service-name DNS is unaffected.
+#   - the `proxy` service is renamed `plane-proxy` (it's the name the edge Caddy
+#     resolves on the shared `edge` network, so it must be unambiguous).
+#   - `plane-proxy` publishes nothing and only joins `edge`; everything else
+#     stays on the stack-private `plane-net`.
+#
+# Prereqs (once on the host):
+#   docker network create edge          # or: sudo devops-francu/systemd/install.sh
+#   cp .env.example .env                # fill in
+#   cp apps/api/.env.example apps/api/.env
+#
+# Run:
+#   ./deploy/deploy.sh
+# or by hand:
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile.web
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    networks: [plane-net]
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: .
+      dockerfile: ./apps/admin/Dockerfile.admin
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    networks: [plane-net]
+    depends_on:
+      - api
+      - web
+
+  space:
+    build:
+      context: .
+      dockerfile: ./apps/space/Dockerfile.space
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    networks: [plane-net]
+    depends_on:
+      - api
+      - web
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    command: ./bin/docker-entrypoint-api.sh
+    env_file:
+      - ./apps/api/.env
+    networks: [plane-net]
+    depends_on:
+      - plane-db
+      - plane-redis
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    command: ./bin/docker-entrypoint-worker.sh
+    env_file:
+      - ./apps/api/.env
+    networks: [plane-net]
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
+
+  beat-worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    command: ./bin/docker-entrypoint-beat.sh
+    env_file:
+      - ./apps/api/.env
+    networks: [plane-net]
+    depends_on:
+      - api
+      - plane-db
+      - plane-redis
+
+  # One-shot: runs `manage.py migrate` and exits 0. deploy/deploy.sh blocks on
+  # this container's exit code, so a failed migration fails the deploy loudly
+  # instead of surfacing later as a half-broken app.
+  migrator:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile.api
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: "no"
+    command: ./bin/docker-entrypoint-migrator.sh
+    env_file:
+      - ./apps/api/.env
+    networks: [plane-net]
+    depends_on:
+      - plane-db
+      - plane-redis
+
+  live:
+    build:
+      context: .
+      dockerfile: ./apps/live/Dockerfile.live
+      args:
+        DOCKER_BUILDKIT: 1
+    restart: always
+    networks: [plane-net]
+
+  plane-db:
+    image: postgres:15.7-alpine
+    restart: always
+    command: postgres -c 'max_connections=1000'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      PGDATA: /var/lib/postgresql/data
+    networks: [plane-net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  plane-redis:
+    image: valkey/valkey:7.2.11-alpine
+    restart: always
+    volumes:
+      - redisdata:/data
+    networks: [plane-net]
+
+  plane-mq:
+    image: rabbitmq:3.13.6-management-alpine
+    restart: always
+    env_file:
+      - .env
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:?set RABBITMQ_VHOST in .env}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks: [plane-net]
+
+  plane-minio:
+    image: minio/minio
+    restart: always
+    command: server /export --console-address ":9090"
+    volumes:
+      - uploads:/export
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID:?set AWS_ACCESS_KEY_ID in .env}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY:?set AWS_SECRET_ACCESS_KEY in .env}
+    networks: [plane-net]
+
+  # Plane's OWN internal Caddy. Renamed from upstream's `proxy` because this is
+  # the name the shared edge Caddy resolves over `edge` — `proxy` is far too
+  # generic to be safe as a host-global service name.
+  #
+  # It is the ONLY service on both networks: `edge` (so the edge Caddy can
+  # reach it) and `plane-net` (so it can reach web/api/admin/space/live/minio).
+  plane-proxy:
+    build:
+      context: ./apps/proxy
+      dockerfile: Dockerfile.ce
+    restart: always
+    # No published ports: the edge Caddy proxies to plane-proxy:80.
+    expose:
+      - "80"
+    environment:
+      FILE_SIZE_LIMIT: ${FILE_SIZE_LIMIT:-5242880}
+      BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-uploads}
+      # Listen on plain :80 only. TLS is terminated (or, today, not needed) at
+      # the edge — double-proxying HTTPS here would just fight the edge Caddy.
+      SITE_ADDRESS: ":80"
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-0.0.0.0/0}
+    networks:
+      - edge
+      - plane-net
+    depends_on:
+      - web
+      - api
+      - space
+      - admin
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+networks:
+  # Shared external network created by the edge proxy stack (devops-francu).
+  # Declared external, so Docker never creates it — it must already exist:
+  #   docker network create edge
+  edge:
+    external: true
+  # Stack-private network for Plane's internal service-to-service traffic.
+  # Keeps db/redis/mq/minio off the shared edge network.
+  plane-net:
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  rabbitmq_data:
