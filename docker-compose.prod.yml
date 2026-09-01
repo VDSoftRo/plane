@@ -159,8 +159,10 @@ services:
     command: postgres -c 'max_connections=1000'
     volumes:
       - pgdata:/var/lib/postgresql/data
-    env_file:
-      - .env
+    # No env_file here: upstream passes the whole root .env, which hands postgres
+    # every unrelated key in the file (minio creds, rate limits, dead OPENAI_*
+    # settings). The four vars below are all it needs, and compose substitutes
+    # them from .env anyway.
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
@@ -184,8 +186,7 @@ services:
   plane-mq:
     image: rabbitmq:3.13.6-management-alpine
     restart: always
-    env_file:
-      - .env
+    # No env_file — same reason as plane-db above.
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?set RABBITMQ_PASSWORD in .env}
